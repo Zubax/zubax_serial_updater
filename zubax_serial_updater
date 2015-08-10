@@ -1,0 +1,185 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2014 Pavel Kirienko <pavel.kirienko@zubax.com>
+#
+
+import time
+import sys
+import glob
+import traceback
+import threading
+import logging
+import os
+
+import serial
+import serial.tools.list_ports
+
+try:
+    import Tkinter as tkinter
+    import ttk
+    import tkMessageBox as msgbox
+except ImportError:
+    import tkinter
+    from tkinter import ttk
+    import tkinter.messagebox as msgbox
+
+import stm32_loader
+
+def list_serial_ports():
+    if sys.platform.startswith('win'):
+        ports = [dev for dev,_name,_usb in serial.tools.list_ports.comports()]
+    elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+        ports = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*')
+    elif sys.platform.startswith('darwin'):
+        ports = glob.glob('/dev/tty.*') + glob.glob('/dev/cu.*')
+    else:
+        raise EnvironmentError('Unsupported platform: %s' % sys.platform)
+    return list(sorted(ports))
+
+def get_executable_directory():
+    '''Valid for cx_Freeze'''
+    return os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__)
+
+class Application(ttk.Frame):
+    def __init__(self, master=None):
+        ttk.Frame.__init__(self, master)
+
+        self.grid()
+        self.winfo_toplevel().resizable(0,0)
+        try:
+            self.winfo_toplevel().attributes(toolwindow=1)      # Windows
+        except Exception:
+            pass
+
+        # Process state variables
+        self.process_running = False            # True if running
+        self.process_progress_percent = None    # Either None or [0, 100]
+        self.process_error_string = None        # None if OK, string if failed
+        self.process_status_string = None       # Current status as string
+
+        # This data structure is being continuously updated in background
+        self.available_ports = []
+
+        self.label_status = ttk.Label(self, text='Select serial port and press Start')
+        self.label_status.grid(row=0, columnspan=2, sticky='WE')
+
+        self.ports = ttk.Combobox(self, width=40)
+        self.ports.grid(row=1, sticky='WE')
+        self.ports['state'] = 'readonly'
+
+        self.btn_start = ttk.Button(self, text='Start', command=self.start)
+        self.btn_start.grid(row=1, column=1)
+
+        self.progressbar = ttk.Progressbar(self)
+        self.progressbar.grid(row=2, columnspan=2, sticky='WE')
+
+        self.label_status = ttk.Label(self, text='Firmware: ' + FIRMWARE_NAME)
+        self.label_status.grid(row=3, columnspan=2, sticky='WE')
+
+        port_refreshing_thread = threading.Thread(name='port_refresher', target=self.refresh_ports_loop)
+        port_refreshing_thread.daemon = True
+        port_refreshing_thread.start()
+
+        self.timer_5hz()
+
+    def update_process_status(self):
+        if self.process_running:
+            self.label_status['text'] = self.process_status_string if self.process_status_string is not None else ''
+            if self.process_progress_percent is None:
+                self.progressbar['mode'] = 'indeterminate'
+                self.progressbar.step()
+            else:
+                self.progressbar['mode'] = 'determinate'
+                self.progressbar['value'] = self.process_progress_percent
+
+    def report_process_completion(self):
+        self.label_status['text'] = ''
+        self.progressbar['mode'] = 'determinate'
+        self.progressbar['value'] = 0
+        if self.process_error_string is None:
+            msgbox.showinfo('Success', 'Completed successfully!')
+        else:
+            msgbox.showerror('Failure', 'Process failed, please try again.\n%s' % self.process_error_string)
+
+    def update_displayed_available_ports(self):
+        if set(self.ports['values']) != set(self.available_ports):
+            logging.info('Updating available ports')
+            try:
+                current_port = self.ports['values'][self.ports.current()]
+            except IndexError:
+                current_port = None
+            self.ports['values'] = self.available_ports
+            if current_port in self.available_ports:
+                self.ports.set(current_port)
+            else:
+                try:
+                    self.ports.current(0)
+                except Exception:
+                    self.ports.set('')
+
+    def refresh_ports_loop(self):
+        while True:
+            try:
+                self.available_ports = list_serial_ports()
+            except Exception:
+                logging.error('Port refresh failed', exc_info=True)
+            time.sleep(2)
+
+    def timer_5hz(self):
+        if not hasattr(self, '_tmr_last_process_running'):
+            self._tmr_last_process_running = False
+
+        if self._tmr_last_process_running != self.process_running:
+            self._tmr_last_process_running = self.process_running
+            if not self.process_running:
+                self.report_process_completion()
+
+        self.update_process_status()
+        self.update_displayed_available_ports()
+        self.after(200, self.timer_5hz)
+
+    def start(self):
+        if self.process_running:
+            msgbox.showwarning('Rejected', 'Process is already running')
+            return
+
+        port = self.ports.get()
+        if not port:
+            msgbox.showerror('Rejected', 'Select serial port first')
+            return
+
+        def progress_report_callback(status, x):
+            self.process_status_string = status
+            self.process_progress_percent = None if x is None else int(x * 100 + 0.5)
+
+        def runner():
+            self.process_running = True
+            logging.info('Process started')
+            try:
+                stm32_loader.load(port, FIRMWARE_IMAGE, progress_report_callback=progress_report_callback)
+            except Exception:
+                self.process_error_string = traceback.format_exc()
+                logging.error('Process failed', exc_info=True)
+            else:
+                self.process_error_string = None
+            self.process_running = False
+            self.process_progress_percent = None
+
+        threading.Thread(name='worker', target=runner).start()
+
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+
+try:
+    firmware_file = glob.glob(os.path.join(get_executable_directory(), '*.bin'))[0]
+    FIRMWARE_NAME = os.path.basename(firmware_file)
+    with open(firmware_file, 'rb') as f:
+        FIRMWARE_IMAGE = f.read()
+    logging.info('Firmware image loaded; name: %s, size: %.2fKB', firmware_file, len(FIRMWARE_IMAGE) / 1024.)
+except Exception:
+    logging.error('Could not load firmware image', exc_info=True)
+    exit(1)
+
+app = Application()
+app.master.title('Zubax serial updater')
+app.mainloop()
