@@ -58,9 +58,10 @@ class STM32LoaderNACKException(STM32LoaderException):
 
 
 class STM32Loader:
-    def __init__(self, port, baudrate=None, timeout=None):
-        baudrate = baudrate or 38400   # 115200 sometimes fails on Windows, lower baudrates are more reliable
+    def __init__(self, port, baudrate=None, timeout=None, synchronization_prefix=None):
+        baudrate = baudrate or 115200
         timeout = timeout or 1.0
+        self.synchronization_prefix = synchronization_prefix or b''
         self.io = serial.Serial(port=port, baudrate=baudrate, parity=serial.PARITY_EVEN, timeout=timeout)
 
     def close(self):
@@ -90,18 +91,14 @@ class STM32Loader:
         if x != ACK:
             raise STM32LoaderException('Invalid response while waiting for ACK: 0x%02x' % x)
 
-    def synchronize(self):
-        def flush():
-            while len(self.io.read(9999)) > 0:
-                pass
-        flush()
-        self._write(bchr(SYNCHRONIZATION_BYTE) * 16)
-        try:
-            self._wait_for_ack()
-        except STM32LoaderNACKException:        # Which means that we're already autobauded and synchronized
-            pass
-        flush()
-        logger.debug('Synchronized successfully')
+    def synchronize(self, skip_prefix=False):
+        self.io.flushInput()
+        if self.synchronization_prefix and not skip_prefix:
+            self._write(self.synchronization_prefix)
+            time.sleep(1)
+        self._write(bchr(SYNCHRONIZATION_BYTE))
+        time.sleep(1)
+        self.io.flushInput()
 
     def generic_execute_and_confirm(self, cmd):
         logger.debug('Executing 0x%02x', cmd)
@@ -242,7 +239,13 @@ class STM32Loader:
         progress_report_callback(1.0)
 
 
-def load(port, binary_image, load_address=None, progress_report_callback=None, **loader_arguments):
+def load(port,
+         binary_image,
+         load_address=None,
+         progress_report_callback=None,
+         readout_unprotect=False,
+         write_unprotect=False,
+         **loader_arguments):
     # Argument validation
     progress_report_callback = progress_report_callback or (lambda _a, _b: None)
     load_address = load_address or DEFAULT_FLASH_ADDRESS
@@ -250,15 +253,23 @@ def load(port, binary_image, load_address=None, progress_report_callback=None, *
         binary_image += b'\xFF'
 
     # Initialization
-    progress_report_callback('Initialization', None)
+    progress_report_callback('Synchronization', None)
     loader = STM32Loader(port, **loader_arguments)
     try:
+        # First attempt to synchronize
+        try:
+            loader.synchronize(skip_prefix=False)
+        except Exception:
+            pass
+
+        # Trying a command; if it fails, trying to resync without prefix
         for _ in range(3):
             try:
-                loader.synchronize()
+                loader.get()
                 break
-            except STM32LoaderException:
-                logger.debug('Synchronization failed')
+            except Exception:
+                logger.debug('Resynchronizing...')
+                loader.synchronize(skip_prefix=True)
 
         # General info
         logger.info('Target info: %s', loader.get())
@@ -267,10 +278,15 @@ def load(port, binary_image, load_address=None, progress_report_callback=None, *
 
         # Target preparation
         progress_report_callback('Configuring target', None)
-        loader.readout_unprotect()
-        loader.synchronize()        # Previous command generates system reset
-        loader.write_unprotect()
-        loader.synchronize()        # Previous command generates system reset
+
+        if readout_unprotect:
+            loader.readout_unprotect()
+            loader.synchronize()        # Previous command generates system reset
+
+        if write_unprotect:
+            loader.write_unprotect()
+            loader.synchronize()        # Previous command generates system reset
+
         loader.global_erase()
 
         # Write

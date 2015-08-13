@@ -25,6 +25,8 @@ except ImportError:
 
 import stm32_loader
 
+SYNCHRONIZATION_PREFIX = b'\r\n\r\nbootloader\r\n'
+
 def list_serial_ports():
     if sys.platform.startswith('win'):
         ports = [dev for dev,_name,_usb in serial.tools.list_ports.comports()]
@@ -63,7 +65,7 @@ class Application(ttk.Frame):
         self.label_status = ttk.Label(self, text='Select serial port and press Start')
         self.label_status.grid(row=0, columnspan=2, sticky='WE')
 
-        self.ports = ttk.Combobox(self, width=40)
+        self.ports = ttk.Combobox(self, width=20)
         self.ports.grid(row=1, sticky='WE')
         self.ports['state'] = 'readonly'
 
@@ -97,7 +99,7 @@ class Application(ttk.Frame):
         self.progressbar['mode'] = 'determinate'
         self.progressbar['value'] = 0
         if self.process_error_string is None:
-            msgbox.showinfo('Success', 'Completed successfully!')
+            msgbox.showinfo('Success', 'Completed successfully! Now disconnect the device from power supply.')
         else:
             msgbox.showerror('Failure', 'Process failed, please try again.\n%s' % self.process_error_string)
 
@@ -156,7 +158,9 @@ class Application(ttk.Frame):
             self.process_running = True
             logging.info('Process started')
             try:
-                stm32_loader.load(port, FIRMWARE_IMAGE, progress_report_callback=progress_report_callback)
+                stm32_loader.load(port, FIRMWARE_IMAGE,
+                                  progress_report_callback=progress_report_callback,
+                                  synchronization_prefix=SYNCHRONIZATION_PREFIX)
             except Exception:
                 self.process_error_string = traceback.format_exc()
                 logging.error('Process failed', exc_info=True)
@@ -165,7 +169,9 @@ class Application(ttk.Frame):
             self.process_running = False
             self.process_progress_percent = None
 
-        threading.Thread(name='worker', target=runner).start()
+        worker = threading.Thread(name='worker', target=runner)
+        worker.daemon = True
+        worker.start()
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
