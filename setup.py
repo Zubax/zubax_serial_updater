@@ -25,11 +25,11 @@ bdist_msi_options = {
 }
 
 setup(
-    name='zubax_serial_updater',
+    name='Zubax Serial Updater',
     version='1.0',
-    description='Zubax serial firmware updater',
+    description='Tool for updating firmware via serial interface',
     requires=['serial'],
-    author='Pavel Kirienko',
+    author='Zubax Robotics',
     author_email='pavel.kirienko@zubax.com',
     url='http://zubax.com',
     license='MIT',
