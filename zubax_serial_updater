@@ -101,7 +101,7 @@ class Application(ttk.Frame):
         if self.process_error_string is None:
             msgbox.showinfo('Success', 'Completed successfully! Now disconnect the device from power supply.')
         else:
-            msgbox.showerror('Failure', 'Process failed, please try again.\n%s' % self.process_error_string)
+            msgbox.showerror('Failure', 'Process failed, please try again.\nError: %s' % self.process_error_string)
 
     def update_displayed_available_ports(self):
         if set(self.ports['values']) != set(self.available_ports):
@@ -161,8 +161,8 @@ class Application(ttk.Frame):
                 stm32_loader.load(port, FIRMWARE_IMAGE,
                                   progress_report_callback=progress_report_callback,
                                   synchronization_prefix=SYNCHRONIZATION_PREFIX)
-            except Exception:
-                self.process_error_string = traceback.format_exc()
+            except Exception, ex:
+                self.process_error_string = '%s %s' % (type(ex).__name__, str(ex))
                 logging.error('Process failed', exc_info=True)
             else:
                 self.process_error_string = None
