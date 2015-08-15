@@ -161,7 +161,7 @@ class Application(ttk.Frame):
                 stm32_loader.load(port, FIRMWARE_IMAGE,
                                   progress_report_callback=progress_report_callback,
                                   synchronization_prefix=SYNCHRONIZATION_PREFIX)
-            except Exception, ex:
+            except Exception as ex:
                 self.process_error_string = '%s %s' % (type(ex).__name__, str(ex))
                 logging.error('Process failed', exc_info=True)
             else:
