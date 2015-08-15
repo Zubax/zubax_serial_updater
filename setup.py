@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (C) 2014 Pavel Kirienko <pavel.kirienko@zubax.com>
+# Copyright (C) 2015 Pavel Kirienko <pavel.kirienko@zubax.com>
 #
 
 import sys
