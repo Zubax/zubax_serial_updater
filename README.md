@@ -2,6 +2,8 @@
 
 Simple cross-platform GUI application to update MCU firmware via serial port.
 
+![Screenshot](screenshot.png)
+
 Put the binaries into the current directory, making sure that their extension is `.bin`.
 When started, the application will pick all available `*.bin` files from its local directory/package,
 making them available for choice from a drop-down list.
