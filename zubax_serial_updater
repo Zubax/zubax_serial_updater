@@ -42,6 +42,11 @@ def get_executable_directory():
     '''Valid for cx_Freeze'''
     return os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__)
 
+def list_firmware_files():
+    pathes = glob.glob(os.path.join(get_executable_directory(), '*.bin'))
+    pathes = sorted(pathes)
+    return list(map(lambda x: x.replace('./', ''), pathes))
+
 class Application(ttk.Frame):
     def __init__(self, master=None):
         ttk.Frame.__init__(self, master)
@@ -59,28 +64,37 @@ class Application(ttk.Frame):
         self.process_error_string = None        # None if OK, string if failed
         self.process_status_string = None       # Current status as string
 
-        # This data structure is being continuously updated in background
+        # These data structures are being continuously updated in background
         self.available_ports = []
+        self.available_firmwares = []
 
-        self.label_status = ttk.Label(self, text='Select serial port and press Start')
-        self.label_status.grid(row=0, columnspan=2, sticky='WE')
+        self.firmwares_label = ttk.Label(self, text='Firmware:')
+        self.firmwares_label.grid(row=0, sticky='E')
 
-        self.ports = ttk.Combobox(self, width=20)
-        self.ports.grid(row=1, sticky='WE')
+        self.firmwares = ttk.Combobox(self, width=30)
+        self.firmwares.grid(row=0, column=1, sticky='WE')
+        self.firmwares['state'] = 'readonly'
+
+        self.ports_label = ttk.Label(self, text='Port:')
+        self.ports_label.grid(row=1, sticky='E')
+
+        self.ports = ttk.Combobox(self)
+        self.ports.grid(row=1, column=1, sticky='WE')
         self.ports['state'] = 'readonly'
 
         self.btn_start = ttk.Button(self, text='Start', command=self.start)
-        self.btn_start.grid(row=1, column=1)
+        self.btn_start.grid(row=0, column=2, rowspan=2, sticky='NSWE')
 
         self.progressbar = ttk.Progressbar(self)
-        self.progressbar.grid(row=2, columnspan=2, sticky='WE')
+        self.progressbar.grid(row=2, columnspan=3, sticky='WE')
 
-        self.label_status = ttk.Label(self, text='Firmware: ' + FIRMWARE_NAME)
-        self.label_status.grid(row=3, columnspan=2, sticky='WE')
+        self.label_status = ttk.Label(self, text='Select firmware and port, then press Start')
+        self.label_status.grid(row=3, columnspan=3, sticky='WE')
 
-        port_refreshing_thread = threading.Thread(name='port_refresher', target=self.refresh_ports_loop)
-        port_refreshing_thread.daemon = True
-        port_refreshing_thread.start()
+        background_refreshing_thread = threading.Thread(name='background_refresher',
+                                                        target=self.background_refresh_loop)
+        background_refreshing_thread.daemon = True
+        background_refreshing_thread.start()
 
         self.timer_5hz()
 
@@ -103,28 +117,37 @@ class Application(ttk.Frame):
         else:
             msgbox.showerror('Failure', 'Process failed, please try again.\nError: %s' % self.process_error_string)
 
-    def update_displayed_available_ports(self):
-        if set(self.ports['values']) != set(self.available_ports):
-            logging.info('Updating available ports')
+    def perform_async_gui_update(self):
+        def update_one(box, source):
             try:
-                current_port = self.ports['values'][self.ports.current()]
+                current_port = box['values'][box.current()]
             except IndexError:
                 current_port = None
-            self.ports['values'] = self.available_ports
-            if current_port in self.available_ports:
-                self.ports.set(current_port)
+            box['values'] = source
+            if current_port in source:
+                box.set(current_port)
             else:
                 try:
-                    self.ports.current(0)
+                    box.current(0)
                 except Exception:
-                    self.ports.set('')
+                    box.set('')
+        if set(self.ports['values']) != set(self.available_ports):
+            logging.info('Updating available ports')
+            update_one(self.ports, self.available_ports)
+        if set(self.firmwares['values']) != set(self.available_firmwares):
+            logging.info('Updating available firmwares')
+            update_one(self.firmwares, self.available_firmwares[::-1])
 
-    def refresh_ports_loop(self):
+    def background_refresh_loop(self):
         while True:
             try:
                 self.available_ports = list_serial_ports()
             except Exception:
-                logging.error('Port refresh failed', exc_info=True)
+                logging.error('Background port refresh failed', exc_info=True)
+            try:
+                self.available_firmwares = list_firmware_files()
+            except Exception:
+                logging.error('Background firmware refresh failed', exc_info=True)
             time.sleep(2)
 
     def timer_5hz(self):
@@ -137,13 +160,27 @@ class Application(ttk.Frame):
                 self.report_process_completion()
 
         self.update_process_status()
-        self.update_displayed_available_ports()
+        self.perform_async_gui_update()
         self.after(200, self.timer_5hz)
 
     def start(self):
         if self.process_running:
             msgbox.showwarning('Rejected', 'Process is already running')
             return
+
+        firmware_path = self.firmwares.get()
+        if not firmware_path:
+            msgbox.showerror('Rejected', 'Select firmware first')
+            return
+
+        try:
+            with open(firmware_path, 'rb') as f:
+                firmware_image = f.read()
+        except Exception, ex:
+            logging.error('Could not load firmware', exc_info=True)
+            msgbox.showerror('Rejected', 'Could not load firmware!\n' + str(ex))
+            return
+        logging.info('Firmware loaded; name: %s, size: %.2fKB', firmware_path, len(firmware_image) / 1024.)
 
         port = self.ports.get()
         if not port:
@@ -158,7 +195,7 @@ class Application(ttk.Frame):
             self.process_running = True
             logging.info('Process started')
             try:
-                stm32_loader.load(port, FIRMWARE_IMAGE,
+                stm32_loader.load(port, firmware_image,
                                   progress_report_callback=progress_report_callback,
                                   synchronization_prefix=SYNCHRONIZATION_PREFIX)
             except Exception as ex:
@@ -175,16 +212,6 @@ class Application(ttk.Frame):
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
-
-try:
-    firmware_file = glob.glob(os.path.join(get_executable_directory(), '*.bin'))[0]
-    FIRMWARE_NAME = os.path.basename(firmware_file)
-    with open(firmware_file, 'rb') as f:
-        FIRMWARE_IMAGE = f.read()
-    logging.info('Firmware image loaded; name: %s, size: %.2fKB', firmware_file, len(FIRMWARE_IMAGE) / 1024.)
-except Exception:
-    logging.error('Could not load firmware image', exc_info=True)
-    exit(1)
 
 app = Application()
 app.master.title('Zubax serial updater')
