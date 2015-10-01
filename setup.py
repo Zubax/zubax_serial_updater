@@ -26,7 +26,7 @@ bdist_msi_options = {
 
 setup(
     name='Zubax Serial Updater',
-    version='1.0',
+    version='1.1',
     description='Tool for updating firmware via serial interface',
     requires=['serial'],
     author='Zubax Robotics',
