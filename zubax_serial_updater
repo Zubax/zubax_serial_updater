@@ -176,7 +176,7 @@ class Application(ttk.Frame):
         try:
             with open(firmware_path, 'rb') as f:
                 firmware_image = f.read()
-        except Exception, ex:
+        except Exception as ex:
             logging.error('Could not load firmware', exc_info=True)
             msgbox.showerror('Rejected', 'Could not load firmware!\n' + str(ex))
             return
