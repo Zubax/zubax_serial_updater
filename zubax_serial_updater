@@ -45,7 +45,7 @@ def get_executable_directory():
 def list_firmware_files():
     pathes = glob.glob(os.path.join(get_executable_directory(), '*.bin'))
     pathes = sorted(pathes)
-    return list(map(lambda x: x.replace('./', ''), pathes))
+    return list(map(os.path.basename, pathes))
 
 class Application(ttk.Frame):
     def __init__(self, master=None):
@@ -168,7 +168,7 @@ class Application(ttk.Frame):
             msgbox.showwarning('Rejected', 'Process is already running')
             return
 
-        firmware_path = self.firmwares.get()
+        firmware_path = os.path.join(get_executable_directory(), self.firmwares.get())
         if not firmware_path:
             msgbox.showerror('Rejected', 'Select firmware first')
             return
