@@ -8,6 +8,8 @@ Put the binaries into the current directory, making sure that their extension is
 When started, the application will pick all available `*.bin` files from its local directory/package,
 making them available for choice from a drop-down list.
 
+When the application is built into a Windows `.msi` package, the binaries from the current directory will be packaged together with the application, creating a nice single-file medium for firmware distribution.
+
 ## Linux
 
 Python dependencies:
@@ -18,14 +20,28 @@ Python dependencies:
 
 The application should be used as-is, no installation is required.
 
+### Installing dependencies on Ubuntu
+
+Python 3.x (preferred):
+
+```bash
+sudo apt-get install python3-serial python3-tk
+```
+
+Python 2.7 (not recommended):
+
+```bash
+sudo apt-get install python-serial python-tk
+```
+
 ## Windows
 
 Build-time Python dependencies:
 
-* Python 3.x
-* `serial`
-* `tkinter`
-* `cx_Freeze`
+* Python 3.x (download from <https://python.org>)
+* `serial` (installation command: `pip install pyserial`)
+* `tkinter` (typically it is already included with Python package for Windows, so no installation is necessary)
+* `cx_Freeze` (installation command: `pip install cx_Freeze`)
 
 Build instructions:
 
