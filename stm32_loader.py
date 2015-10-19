@@ -306,10 +306,14 @@ def load(port,
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG, format='%(message)s')
 
-    PORT = '/dev/ttyACM1' if len(sys.argv) < 2 else sys.argv[1]
+    PORT = sys.argv[1]
 
     if 1:
-        load(PORT, b'1234567890' * 100)
+        FILE = sys.argv[2]
+        with open(FILE, 'rb') as f:
+            binary = f.read()
+        print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
+        load(PORT, binary)
     else:
         loader = STM32Loader(PORT)
         loader.synchronize()
