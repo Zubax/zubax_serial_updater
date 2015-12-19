@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 #
 # Copyright (C) 2015 Pavel Kirienko <pavel.kirienko@zubax.com>
 #
@@ -9,6 +11,7 @@ import serial
 import struct
 import time
 import logging
+import binascii
 
 from functools import partial, reduce
 
@@ -42,7 +45,6 @@ CMD_READOUT_PROTECT                   = 0x82
 CMD_READOUT_UNPROTECT                 = 0x92
 
 DEFAULT_FLASH_ADDRESS = 0x08000000
-
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -113,8 +115,8 @@ class STM32Loader:
         available_commands = self._read_bytes(response_length)
         self._wait_for_ack()
         return {
-            'version': bl_version,
-            'commands': available_commands
+            b'version': bl_version,
+            b'commands': map(lambda x: b'%.2x' % x, available_commands) 
         }
 
     def get_version_and_protection_status(self):
@@ -124,8 +126,8 @@ class STM32Loader:
         option_byte_2 = self._read_byte()
         self._wait_for_ack()
         return {
-            'version': bl_version,
-            'option_bytes': [option_byte_1, option_byte_2]
+            b'version': bl_version,
+            b'option_bytes': [b'%.2x' % option_byte_1, b'%.2x' % option_byte_2]
         }
 
     def get_id(self):
@@ -199,8 +201,17 @@ class STM32Loader:
         self._write(b'\xFF\x00')
         self._wait_for_ack()
 
-    # GO is not implemented
-    # Page erase is not implemented
+    def extended_erase(self):
+        self.generic_execute_and_confirm(CMD_EXTENDED_ERASE)
+        self._write(b'\xFF\xFF\x00')
+        self._wait_for_ack()
+
+    def go(self, start_address):
+        self.generic_execute_and_confirm(CMD_GO)
+        address_bytes = self._encode_address_with_checksum(start_address)
+        self._write(address_bytes)
+        self._wait_for_ack()
+
 
     def read_memory_blocks(self, start_address, length, progress_report_callback=None):
         progress_report_callback = progress_report_callback or (lambda x: None)
@@ -272,7 +283,8 @@ def load(port,
                 loader.synchronize(skip_prefix=True)
 
         # General info
-        logger.info('Target info: %s', loader.get())
+        var_get = loader.get()
+        logger.info('Target info: %s', var_get)
         logger.info('Target info: %s', loader.get_version_and_protection_status())
         logger.info('Target ID: 0x%x', loader.get_id())
 
@@ -287,7 +299,11 @@ def load(port,
             loader.write_unprotect()
             loader.synchronize()        # Previous command generates system reset
 
-        loader.global_erase()
+        if "43" in var_get['commands']:
+            loader.global_erase()
+        else: 
+            loader.extended_erase()
+            
 
         # Write
         write_reporter = partial(progress_report_callback, 'Writing image')
@@ -299,6 +315,10 @@ def load(port,
                                             progress_report_callback=verification_reporter)
         if readback != binary_image:
             raise STM32LoaderException('Verification failed')
+
+        # Run programm
+        loader.go(load_address)
+
     finally:
         loader.close()
 
@@ -314,13 +334,14 @@ if __name__ == "__main__":
             binary = f.read()
         print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
         load(PORT, binary)
+
     else:
         loader = STM32Loader(PORT)
         loader.synchronize()
         print(loader.get())
         print(loader.get_version_and_protection_status())
         print(loader.get_id())
-        loader.global_erase()
-        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
-        loader.write_memory_blocks(0x08000000, b'1234567890' * 100, progress_report_callback=print)
-        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
+#        loader.global_erase()
+#        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
+#        loader.write_memory_blocks(0x08000000, b'1234567890' * 100, progress_report_callback=print)
+#        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
