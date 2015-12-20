@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 #
 # Copyright (C) 2015 Pavel Kirienko <pavel.kirienko@zubax.com>
@@ -11,7 +11,7 @@ import serial
 import struct
 import time
 import logging
-import binascii
+
 
 from functools import partial, reduce
 
@@ -115,8 +115,8 @@ class STM32Loader:
         available_commands = self._read_bytes(response_length)
         self._wait_for_ack()
         return {
-            b'version': bl_version,
-            b'commands': map(lambda x: b'%.2x' % x, available_commands) 
+            'version': bl_version,
+            'commands': available_commands 
         }
 
     def get_version_and_protection_status(self):
@@ -126,8 +126,8 @@ class STM32Loader:
         option_byte_2 = self._read_byte()
         self._wait_for_ack()
         return {
-            b'version': bl_version,
-            b'option_bytes': [b'%.2x' % option_byte_1, b'%.2x' % option_byte_2]
+            'version': bl_version,
+            'option_bytes': [option_byte_1, option_byte_2]
         }
 
     def get_id(self):
@@ -256,6 +256,7 @@ def load(port,
          progress_report_callback=None,
          readout_unprotect=False,
          write_unprotect=False,
+         go=True,
          **loader_arguments):
     # Argument validation
     progress_report_callback = progress_report_callback or (lambda _a, _b: None)
@@ -284,7 +285,9 @@ def load(port,
 
         # General info
         var_get = loader.get()
-        logger.info('Target info: %s', var_get)
+
+        logger.info('Target commands: %s', map(lambda x: '0x%.2x ' % x,
+            var_get['commands']))
         logger.info('Target info: %s', loader.get_version_and_protection_status())
         logger.info('Target ID: 0x%x', loader.get_id())
 
@@ -299,11 +302,10 @@ def load(port,
             loader.write_unprotect()
             loader.synchronize()        # Previous command generates system reset
 
-        if "43" in var_get['commands']:
+        if CMD_ERASE in var_get['commands']:
             loader.global_erase()
         else: 
             loader.extended_erase()
-            
 
         # Write
         write_reporter = partial(progress_report_callback, 'Writing image')
@@ -317,7 +319,8 @@ def load(port,
             raise STM32LoaderException('Verification failed')
 
         # Run programm
-        loader.go(load_address)
+        if go:
+            loader.go(load_address)
 
     finally:
         loader.close()
