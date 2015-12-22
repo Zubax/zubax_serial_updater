@@ -12,7 +12,6 @@ import struct
 import time
 import logging
 
-
 from functools import partial, reduce
 
 # Pyton 2.7/3.x compatibility
@@ -98,9 +97,9 @@ class STM32Loader:
         if self.synchronization_prefix and not skip_prefix:
             self._write(self.synchronization_prefix)
             time.sleep(1)
-        self._write(bchr(SYNCHRONIZATION_BYTE))
-        time.sleep(1)
-        self.io.flushInput()
+            self._write(bchr(SYNCHRONIZATION_BYTE))
+            time.sleep(1)
+            self.io.flushInput()
 
     def generic_execute_and_confirm(self, cmd):
         logger.debug('Executing 0x%02x', cmd)
@@ -116,7 +115,7 @@ class STM32Loader:
         self._wait_for_ack()
         return {
             'version': bl_version,
-            'commands': available_commands 
+            'commands': available_commands
         }
 
     def get_version_and_protection_status(self):
@@ -152,8 +151,8 @@ class STM32Loader:
         address_bytes = list(struct.pack('>I', address))
         if sys.version[0] == '2':
             address_bytes = list(map(ord, address_bytes))
-        address_bytes.append(reduce(lambda a, x: a ^ x, address_bytes))
-        return b''.join(map(bchr, address_bytes))
+            address_bytes.append(reduce(lambda a, x: a ^ x, address_bytes))
+            return b''.join(map(bchr, address_bytes))
 
     def read_memory(self, start_address, length):
         self.generic_execute_and_confirm(CMD_READ_MEMORY)
@@ -192,9 +191,9 @@ class STM32Loader:
             checksum = reduce(lambda a, x: a ^ ord(x), data, encoded_length)
         else:
             checksum = reduce(lambda a, x: a ^ x,      data, encoded_length)
-        self._write(data)
-        self._write(bchr(checksum))
-        self._wait_for_ack()
+            self._write(data)
+            self._write(bchr(checksum))
+            self._wait_for_ack()
 
     def global_erase(self):
         self.generic_execute_and_confirm(CMD_ERASE)
@@ -211,7 +210,6 @@ class STM32Loader:
         address_bytes = self._encode_address_with_checksum(start_address)
         self._write(address_bytes)
         self._wait_for_ack()
-
 
     def read_memory_blocks(self, start_address, length, progress_report_callback=None):
         progress_report_callback = progress_report_callback or (lambda x: None)
@@ -286,8 +284,7 @@ def load(port,
         # General info
         var_get = loader.get()
 
-        logger.info('Target commands: %s', map(lambda x: '0x%.2x ' % x,
-            var_get['commands']))
+        logger.info('Target commands: %s', map(lambda x: '0x%.2x ' % x, var_get['commands']))
         logger.info('Target info: %s', loader.get_version_and_protection_status())
         logger.info('Target ID: 0x%x', loader.get_id())
 
@@ -304,7 +301,7 @@ def load(port,
 
         if CMD_ERASE in var_get['commands']:
             loader.global_erase()
-        else: 
+        else:
             loader.extended_erase()
 
         # Write
@@ -314,7 +311,7 @@ def load(port,
         # Verification
         verification_reporter = partial(progress_report_callback, 'Verification')
         readback = loader.read_memory_blocks(load_address, len(binary_image),
-                                            progress_report_callback=verification_reporter)
+                                             progress_report_callback=verification_reporter)
         if readback != binary_image:
             raise STM32LoaderException('Verification failed')
 
@@ -335,8 +332,8 @@ if __name__ == "__main__":
         FILE = sys.argv[2]
         with open(FILE, 'rb') as f:
             binary = f.read()
-        print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
-        load(PORT, binary)
+            print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
+            load(PORT, binary)
 
     else:
         loader = STM32Loader(PORT)
@@ -344,7 +341,8 @@ if __name__ == "__main__":
         print(loader.get())
         print(loader.get_version_and_protection_status())
         print(loader.get_id())
-#        loader.global_erase()
-#        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
-#        loader.write_memory_blocks(0x08000000, b'1234567890' * 100, progress_report_callback=print)
-#        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
+        loader.global_erase()
+        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
+        loader.write_memory_blocks(0x08000000, b'1234567890' * 100, progress_report_callback=print)
+        print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
+
