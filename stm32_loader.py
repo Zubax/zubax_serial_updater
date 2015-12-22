@@ -332,7 +332,6 @@ if __name__ == "__main__":
             binary = f.read()
         print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
         load(PORT, binary)
-
     else:
         loader = STM32Loader(PORT)
         loader.synchronize()
