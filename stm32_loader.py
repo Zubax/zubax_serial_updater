@@ -309,7 +309,7 @@ def load(port,
         # Verification
         verification_reporter = partial(progress_report_callback, 'Verification')
         readback = loader.read_memory_blocks(load_address, len(binary_image),
-                progress_report_callback=verification_reporter)
+                                             progress_report_callback=verification_reporter)
         if readback != binary_image:
             raise STM32LoaderException('Verification failed')
 
