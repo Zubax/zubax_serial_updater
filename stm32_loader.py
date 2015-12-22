@@ -247,13 +247,13 @@ class STM32Loader:
 
 
 def load(port,
-        binary_image,
-        load_address=None,
-        progress_report_callback=None,
-        readout_unprotect=False,
-        write_unprotect=False,
-        go=True,
-        **loader_arguments):
+         binary_image,
+         load_address=None,
+         progress_report_callback=None,
+         readout_unprotect=False,
+         write_unprotect=False,
+         go=True,
+         **loader_arguments):
     # Argument validation
     progress_report_callback = progress_report_callback or (lambda _a, _b: None)
     load_address = load_address or DEFAULT_FLASH_ADDRESS
