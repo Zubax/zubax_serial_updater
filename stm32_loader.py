@@ -30,18 +30,18 @@ SYNCHRONIZATION_BYTE = 0x7F
 WRITE_BLOCK_SIZE = 256
 READ_BLOCK_SIZE = 256
 
-CMD_GET                               = 0x00
+CMD_GET = 0x00
 CMD_GET_VERSION_AND_PROTECTION_STATUS = 0x01
-CMD_GET_ID                            = 0x02
-CMD_READ_MEMORY                       = 0x11
-CMD_GO                                = 0x21
-CMD_WRITE_MEMORY                      = 0x31
-CMD_ERASE                             = 0x43
-CMD_EXTENDED_ERASE                    = 0x44
-CMD_WRITE_PROTECT                     = 0x63
-CMD_WRITE_UNPROTECT                   = 0x73
-CMD_READOUT_PROTECT                   = 0x82
-CMD_READOUT_UNPROTECT                 = 0x92
+CMD_GET_ID = 0x02
+CMD_READ_MEMORY = 0x11
+CMD_GO = 0x21
+CMD_WRITE_MEMORY = 0x31
+CMD_ERASE = 0x43
+CMD_EXTENDED_ERASE = 0x44
+CMD_WRITE_PROTECT = 0x63
+CMD_WRITE_UNPROTECT = 0x73
+CMD_READOUT_PROTECT = 0x82
+CMD_READOUT_UNPROTECT = 0x92
 
 DEFAULT_FLASH_ADDRESS = 0x08000000
 
@@ -51,8 +51,10 @@ logger = logging.getLogger(LOGGER_NAME)
 class STM32LoaderException(Exception):
     pass
 
+
 class STM32LoaderTimeoutException(STM32LoaderException):
     pass
+
 
 class STM32LoaderNACKException(STM32LoaderException):
     pass
@@ -70,7 +72,7 @@ class STM32Loader:
 
     def _read_bytes(self, num_bytes):
         x = self.io.read(num_bytes)
-        #logger.debug('Read: %s', repr(x))
+#        logger.debug('Read: %s', repr(x))
         if len(x) != num_bytes:
             raise STM32LoaderTimeoutException()
         if sys.version[0] == '2':
@@ -82,7 +84,7 @@ class STM32Loader:
         return self._read_bytes(1)[0]
 
     def _write(self, data):
-        #logger.debug('Write: %s', repr(data))
+        #        logger.debug('Write: %s', repr(data))
         self.io.write(data)
 
     def _wait_for_ack(self):
@@ -97,9 +99,9 @@ class STM32Loader:
         if self.synchronization_prefix and not skip_prefix:
             self._write(self.synchronization_prefix)
             time.sleep(1)
-            self._write(bchr(SYNCHRONIZATION_BYTE))
-            time.sleep(1)
-            self.io.flushInput()
+        self._write(bchr(SYNCHRONIZATION_BYTE))
+        time.sleep(1)
+        self.io.flushInput()
 
     def generic_execute_and_confirm(self, cmd):
         logger.debug('Executing 0x%02x', cmd)
@@ -114,23 +116,23 @@ class STM32Loader:
         available_commands = self._read_bytes(response_length)
         self._wait_for_ack()
         return {
-            'version': bl_version,
-            'commands': available_commands
-        }
+                'version': bl_version,
+                'commands': available_commands
+                }
 
-    def get_version_and_protection_status(self):
-        self.generic_execute_and_confirm(CMD_GET_VERSION_AND_PROTECTION_STATUS)
+        def get_version_and_protection_status(self):
+            self.generic_execute_and_confirm(CMD_GET_VERSION_AND_PROTECTION_STATUS)
         bl_version = self._read_byte()
         option_byte_1 = self._read_byte()
         option_byte_2 = self._read_byte()
         self._wait_for_ack()
         return {
-            'version': bl_version,
-            'option_bytes': [option_byte_1, option_byte_2]
-        }
+                'version': bl_version,
+                'option_bytes': [option_byte_1, option_byte_2]
+                }
 
-    def get_id(self):
-        self.generic_execute_and_confirm(CMD_GET_ID)
+        def get_id(self):
+            self.generic_execute_and_confirm(CMD_GET_ID)
         response_length = self._read_byte()
         if response_length != 1:
             raise STM32LoaderException('GET ID: Unexpected number of bytes')
@@ -151,8 +153,8 @@ class STM32Loader:
         address_bytes = list(struct.pack('>I', address))
         if sys.version[0] == '2':
             address_bytes = list(map(ord, address_bytes))
-            address_bytes.append(reduce(lambda a, x: a ^ x, address_bytes))
-            return b''.join(map(bchr, address_bytes))
+        address_bytes.append(reduce(lambda a, x: a ^ x, address_bytes))
+        return b''.join(map(bchr, address_bytes))
 
     def read_memory(self, start_address, length):
         self.generic_execute_and_confirm(CMD_READ_MEMORY)
@@ -191,9 +193,9 @@ class STM32Loader:
             checksum = reduce(lambda a, x: a ^ ord(x), data, encoded_length)
         else:
             checksum = reduce(lambda a, x: a ^ x,      data, encoded_length)
-            self._write(data)
-            self._write(bchr(checksum))
-            self._wait_for_ack()
+        self._write(data)
+        self._write(bchr(checksum))
+        self._wait_for_ack()
 
     def global_erase(self):
         self.generic_execute_and_confirm(CMD_ERASE)
@@ -249,13 +251,13 @@ class STM32Loader:
 
 
 def load(port,
-         binary_image,
-         load_address=None,
-         progress_report_callback=None,
-         readout_unprotect=False,
-         write_unprotect=False,
-         go=True,
-         **loader_arguments):
+        binary_image,
+        load_address=None,
+        progress_report_callback=None,
+        readout_unprotect=False,
+        write_unprotect=False,
+        go=True,
+        **loader_arguments):
     # Argument validation
     progress_report_callback = progress_report_callback or (lambda _a, _b: None)
     load_address = load_address or DEFAULT_FLASH_ADDRESS
@@ -311,7 +313,7 @@ def load(port,
         # Verification
         verification_reporter = partial(progress_report_callback, 'Verification')
         readback = loader.read_memory_blocks(load_address, len(binary_image),
-                                             progress_report_callback=verification_reporter)
+                progress_report_callback=verification_reporter)
         if readback != binary_image:
             raise STM32LoaderException('Verification failed')
 
@@ -332,8 +334,8 @@ if __name__ == "__main__":
         FILE = sys.argv[2]
         with open(FILE, 'rb') as f:
             binary = f.read()
-            print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
-            load(PORT, binary)
+        print('Loading "%s" [%.2f KB] via %s' % (FILE, len(binary) / 1024., PORT))
+        load(PORT, binary)
 
     else:
         loader = STM32Loader(PORT)
