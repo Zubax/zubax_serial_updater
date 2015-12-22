@@ -84,7 +84,7 @@ class STM32Loader:
         return self._read_bytes(1)[0]
 
     def _write(self, data):
-        #        logger.debug('Write: %s', repr(data))
+#        logger.debug('Write: %s', repr(data))
         self.io.write(data)
 
     def _wait_for_ack(self):
@@ -115,24 +115,20 @@ class STM32Loader:
         bl_version = self._read_byte()
         available_commands = self._read_bytes(response_length)
         self._wait_for_ack()
-        return {
-                'version': bl_version,
-                'commands': available_commands
-                }
+        return {'version': bl_version,
+                'commands': available_commands}
 
-        def get_version_and_protection_status(self):
-            self.generic_execute_and_confirm(CMD_GET_VERSION_AND_PROTECTION_STATUS)
+    def get_version_and_protection_status(self):
+        self.generic_execute_and_confirm(CMD_GET_VERSION_AND_PROTECTION_STATUS)
         bl_version = self._read_byte()
         option_byte_1 = self._read_byte()
         option_byte_2 = self._read_byte()
         self._wait_for_ack()
-        return {
-                'version': bl_version,
-                'option_bytes': [option_byte_1, option_byte_2]
-                }
+        return {'version': bl_version,
+                'option_bytes': [option_byte_1, option_byte_2]}
 
-        def get_id(self):
-            self.generic_execute_and_confirm(CMD_GET_ID)
+    def get_id(self):
+        self.generic_execute_and_confirm(CMD_GET_ID)
         response_length = self._read_byte()
         if response_length != 1:
             raise STM32LoaderException('GET ID: Unexpected number of bytes')
@@ -192,7 +188,7 @@ class STM32Loader:
         if sys.version[0] == '2':
             checksum = reduce(lambda a, x: a ^ ord(x), data, encoded_length)
         else:
-            checksum = reduce(lambda a, x: a ^ x,      data, encoded_length)
+            checksum = reduce(lambda a, x: a ^ x, data, encoded_length)
         self._write(data)
         self._write(bchr(checksum))
         self._wait_for_ack()
@@ -239,13 +235,13 @@ class STM32Loader:
         offset = 0
 
         while length > WRITE_BLOCK_SIZE:
-            self.write_memory(start_address + offset, data[offset:offset+WRITE_BLOCK_SIZE])
+            self.write_memory(start_address + offset, data[offset:offset + WRITE_BLOCK_SIZE])
             length -= WRITE_BLOCK_SIZE
             offset += WRITE_BLOCK_SIZE
             progress_report_callback(offset / float(len(data)))
 
         if length > 0:
-            self.write_memory(start_address + offset, data[offset:offset+length])
+            self.write_memory(start_address + offset, data[offset:offset + length])
 
         progress_report_callback(1.0)
 
