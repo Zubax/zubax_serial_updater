@@ -252,7 +252,7 @@ def load(port,
          progress_report_callback=None,
          readout_unprotect=False,
          write_unprotect=False,
-         go=True,
+         go=False,
          **loader_arguments):
     # Argument validation
     progress_report_callback = progress_report_callback or (lambda _a, _b: None)
