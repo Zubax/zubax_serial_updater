@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #
 # Copyright (C) 2015 Pavel Kirienko <pavel.kirienko@zubax.com>
 #
@@ -28,21 +30,20 @@ SYNCHRONIZATION_BYTE = 0x7F
 WRITE_BLOCK_SIZE = 256
 READ_BLOCK_SIZE = 256
 
-CMD_GET                               = 0x00
+CMD_GET = 0x00
 CMD_GET_VERSION_AND_PROTECTION_STATUS = 0x01
-CMD_GET_ID                            = 0x02
-CMD_READ_MEMORY                       = 0x11
-CMD_GO                                = 0x21
-CMD_WRITE_MEMORY                      = 0x31
-CMD_ERASE                             = 0x43
-CMD_EXTENDED_ERASE                    = 0x44
-CMD_WRITE_PROTECT                     = 0x63
-CMD_WRITE_UNPROTECT                   = 0x73
-CMD_READOUT_PROTECT                   = 0x82
-CMD_READOUT_UNPROTECT                 = 0x92
+CMD_GET_ID = 0x02
+CMD_READ_MEMORY = 0x11
+CMD_GO = 0x21
+CMD_WRITE_MEMORY = 0x31
+CMD_ERASE = 0x43
+CMD_EXTENDED_ERASE = 0x44
+CMD_WRITE_PROTECT = 0x63
+CMD_WRITE_UNPROTECT = 0x73
+CMD_READOUT_PROTECT = 0x82
+CMD_READOUT_UNPROTECT = 0x92
 
 DEFAULT_FLASH_ADDRESS = 0x08000000
-
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -50,8 +51,10 @@ logger = logging.getLogger(LOGGER_NAME)
 class STM32LoaderException(Exception):
     pass
 
+
 class STM32LoaderTimeoutException(STM32LoaderException):
     pass
+
 
 class STM32LoaderNACKException(STM32LoaderException):
     pass
@@ -69,7 +72,7 @@ class STM32Loader:
 
     def _read_bytes(self, num_bytes):
         x = self.io.read(num_bytes)
-        #logger.debug('Read: %s', repr(x))
+#        logger.debug('Read: %s', repr(x))
         if len(x) != num_bytes:
             raise STM32LoaderTimeoutException()
         if sys.version[0] == '2':
@@ -81,7 +84,7 @@ class STM32Loader:
         return self._read_bytes(1)[0]
 
     def _write(self, data):
-        #logger.debug('Write: %s', repr(data))
+#        logger.debug('Write: %s', repr(data))
         self.io.write(data)
 
     def _wait_for_ack(self):
@@ -189,7 +192,7 @@ class STM32Loader:
         if sys.version[0] == '2':
             checksum = reduce(lambda a, x: a ^ ord(x), data, encoded_length)
         else:
-            checksum = reduce(lambda a, x: a ^ x,      data, encoded_length)
+            checksum = reduce(lambda a, x: a ^ x, data, encoded_length)
         self._write(data)
         self._write(bchr(checksum))
         self._wait_for_ack()
@@ -199,8 +202,16 @@ class STM32Loader:
         self._write(b'\xFF\x00')
         self._wait_for_ack()
 
-    # GO is not implemented
-    # Page erase is not implemented
+    def extended_erase(self):
+        self.generic_execute_and_confirm(CMD_EXTENDED_ERASE)
+        self._write(b'\xFF\xFF\x00')
+        self._wait_for_ack()
+
+    def go(self, start_address):
+        self.generic_execute_and_confirm(CMD_GO)
+        address_bytes = self._encode_address_with_checksum(start_address)
+        self._write(address_bytes)
+        self._wait_for_ack()
 
     def read_memory_blocks(self, start_address, length, progress_report_callback=None):
         progress_report_callback = progress_report_callback or (lambda x: None)
@@ -228,13 +239,13 @@ class STM32Loader:
         offset = 0
 
         while length > WRITE_BLOCK_SIZE:
-            self.write_memory(start_address + offset, data[offset:offset+WRITE_BLOCK_SIZE])
+            self.write_memory(start_address + offset, data[offset:offset + WRITE_BLOCK_SIZE])
             length -= WRITE_BLOCK_SIZE
             offset += WRITE_BLOCK_SIZE
             progress_report_callback(offset / float(len(data)))
 
         if length > 0:
-            self.write_memory(start_address + offset, data[offset:offset+length])
+            self.write_memory(start_address + offset, data[offset:offset + length])
 
         progress_report_callback(1.0)
 
@@ -245,6 +256,7 @@ def load(port,
          progress_report_callback=None,
          readout_unprotect=False,
          write_unprotect=False,
+         go=False,
          **loader_arguments):
     # Argument validation
     progress_report_callback = progress_report_callback or (lambda _a, _b: None)
@@ -272,7 +284,9 @@ def load(port,
                 loader.synchronize(skip_prefix=True)
 
         # General info
-        logger.info('Target info: %s', loader.get())
+        var_get = loader.get()
+
+        logger.info('Target commands: %s', map(lambda x: '0x%.2x ' % x, var_get['commands']))
         logger.info('Target info: %s', loader.get_version_and_protection_status())
         logger.info('Target ID: 0x%x', loader.get_id())
 
@@ -287,7 +301,10 @@ def load(port,
             loader.write_unprotect()
             loader.synchronize()        # Previous command generates system reset
 
-        loader.global_erase()
+        if CMD_ERASE in var_get['commands']:
+            loader.global_erase()
+        else:
+            loader.extended_erase()
 
         # Write
         write_reporter = partial(progress_report_callback, 'Writing image')
@@ -296,9 +313,14 @@ def load(port,
         # Verification
         verification_reporter = partial(progress_report_callback, 'Verification')
         readback = loader.read_memory_blocks(load_address, len(binary_image),
-                                            progress_report_callback=verification_reporter)
+                                             progress_report_callback=verification_reporter)
         if readback != binary_image:
             raise STM32LoaderException('Verification failed')
+
+        # Run programm
+        if go:
+            loader.go(load_address)
+
     finally:
         loader.close()
 
@@ -324,3 +346,4 @@ if __name__ == "__main__":
         print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
         loader.write_memory_blocks(0x08000000, b'1234567890' * 100, progress_report_callback=print)
         print(repr(loader.read_memory_blocks(0x08000000, 1000, progress_report_callback=print)))
+
