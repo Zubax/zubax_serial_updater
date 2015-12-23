@@ -115,8 +115,10 @@ class STM32Loader:
         bl_version = self._read_byte()
         available_commands = self._read_bytes(response_length)
         self._wait_for_ack()
-        return {'version': bl_version,
-                'commands': available_commands}
+        return {
+            'version': bl_version,
+            'commands': available_commands
+        }
 
     def get_version_and_protection_status(self):
         self.generic_execute_and_confirm(CMD_GET_VERSION_AND_PROTECTION_STATUS)
@@ -124,8 +126,10 @@ class STM32Loader:
         option_byte_1 = self._read_byte()
         option_byte_2 = self._read_byte()
         self._wait_for_ack()
-        return {'version': bl_version,
-                'option_bytes': [option_byte_1, option_byte_2]}
+        return {
+            'version': bl_version,
+            'option_bytes': [option_byte_1, option_byte_2]
+        }
 
     def get_id(self):
         self.generic_execute_and_confirm(CMD_GET_ID)
